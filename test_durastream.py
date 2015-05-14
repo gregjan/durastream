@@ -27,10 +27,11 @@ class DurastreamTestCase(unittest.TestCase):
     def test_authStreamURL(self):
         rv = self.app.post('/getStreamURLSecure', data=dict(
             spaceId=AUTH_SPACEID,
-            contentId=CONTENTID
+            contentId=CONTENTID,
+            backURL="http://example.com/my/content/item.html"
         ), follow_redirects=True, environ_base={'REMOTE_ADDR': '127.0.0.1'})
         print rv.data
-        assert 'streamUrl' in rv.data
+        assert 'Streaming Content Authentication' in rv.data
 
 if __name__ == '__main__':
     unittest.main()
