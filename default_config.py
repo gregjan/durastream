@@ -5,3 +5,5 @@ DURACLOUD_URL = 'https://foo.duracloud.org/'
 DURACLOUD_USERNAME = 'foo'
 DURACLOUD_PASSWORD = 'bar'
 DURASTREAM_TIMEOUT_HRS = 8
+DURACLOUD_SPACE_CACHE_DIR = '/tmp/durastream_cache'
+IP_RULES_CONFIG = 'ip_rules.cfg'
