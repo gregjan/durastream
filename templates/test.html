@@ -4,66 +4,113 @@
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
   <title>Durastream Web Player Test Page</title>
-  <script src="http://code.jquery.com/jquery-1.7.2.min.js" />
-  <script src="js.cookie.js" />
 </head>
 <body>
-  <h2>Durastream Web Player Test Page</h2>
-  <div>
-    <select>
-      <option onSelect="stream('wildlife.mp4', 'streaming-test-1')">Stream from Public Space</option>
-      <option onSelect="stream('wildlife.mp4', 'streaming-test-2')">Stream from IP Range or Authenticated Space</option>
-      <option onSelect="stream('wildlife.mp4', 'streaming-test-3')">Stream from Authenticated Only Space</option>
-    </select>
+  <h1>Durastream Web Player Test Page</h1>
+
+  <h3>Choose the space and authorization level to stream:</h3>
+  <p>These demo buttons begin the process of streaming. On a normal content page the
+  same behavior will be triggered when the page is ready. Test streams are in three different
+  DuraCloud spaces with streaming enabled. In addition there is a info.json file
+  with authorization requirements in each space. Steps taken and current cookie status
+  is shown below.</p>
+  <button onclick="stream('open-streaming')">public DuraCloud space</button><br />
+
+  <button onclick="stream('secure-streaming-campus')">secure space requiring campus IP <emphasis>OR</emphasis> authentication</button><br />
+
+  <button onclick="stream('secure-streaming')">secure space requiring campus authentication</button><br />
+
+  <div class="example">
+    <h3>Streaming Player</h3>
+    <div class="player" style="background-color: silver">
+      Player will load here once we obtain the streaming URL.
+    </div>
+    <h3>Steps</h3>
+    <div id="steps">
+    </div>
+    <h3>Cookies (updated every second)</h3>
+    <div id="cookies"></div>
+    <h3>Your IP</h3>
+    <div id="ip">{{ ip }}</div>
   </div>
 
-  <div id="mediaspace">
-    <!--embed width="470" height="30"
-    flashvars="skin=stylish.swf&file=FT10278_2_PM.mp3&start=00:00&streamer=rtmp://s3ia4zdfpa016d.cloudfront.net/cfx/st"
-    wmode="opaque" allowscriptaccess="always" allowfullscreen="true" quality="high"
-    bgcolor="#ffffff" name="ply" id="ply" style="undefined"
-    src="player.swf"
-    type="application/x-shockwave-flash" /-->
-  </div>
-
+<script type="text/javascript" src="http://code.jquery.com/jquery-1.7.2.min.js"></script>
+<script type="text/javascript" src="static/js.cookie.js"></script>
 <script type="text/javascript">
-var DURASTREAM_URL='http://localhost:5000'; // base URL for durastream service
-var DURASTREAM_DIV_SELECTOR="#mediaspace"; // where to append the player or user messages
-</script>
+var DURASTREAM_URL='http://x1:5000'; // base URL for durastream service
+$(document).ready(refreshCookies());
 
-<script type="text/javascript">
-function launchPlayer(elementSelector, streamUrl, contentId) {
-  var flashvars="skin=stylish.swf&file="+contentId+"&start=00:00&streamer="+streamUrl;
-  $(elementSelector).append('embed')
-    .attr('width', '470').attr('height', '30')
-    .attr('flashvars', flashvars)
-    .attr('bgcolor', "#ffffff")
-    .attr('name', "ply")
-    .attr('id' ,"ply")
-    .attr('style', "undefined")
-    .attr('src', "player.swf")
-    .attr('type', "application/x-shockwave-flash");
+function refreshCookies() {
+  var cookies = get_cookies_array();
+  var code = "";
+  for(var name in cookies) {
+    code = code+name+" - "+cookies[name]+"<br />";
+  }
+  $("#cookies").html(code);
+  setTimeout(refreshCookies, 1000);
 }
 
-function stream(contentId, spaceId) {
+function launchPlayer(streamUrl, contentId) {
+  message("Launching player for URL: "+streamUrl);
+  var flashvars="skin=static/stylish.swf&file="+contentId+"&start=00:00&streamer="+streamUrl;
+  $(".player").html("<embed width='470' height='30' flashvars="+flashvars
+    +" bgcolor='#ffffff' name='ply' id='ply' src='static/player.swf'"
+    +" type='application/x-shockwave-flash'/>");
+}
+//style='undefined'
+function stream(spaceId) {
+  var contentId = 'Door_Bell.ogg';
+
   // try the cookie (set locally or after authenticating to service)
+  message("Checking for an existing cookie with streaming URL...");
   var streamUrl = Cookies.get("durastream|"+spaceId+"|"+contentId);
   if(streamUrl === undefined) {
+    message("No Cookie yet, trying to obtain URL w/AJAX...")
+    var req = {};
+    req["contentId"] = contentId;
+    req["spaceId"] = spaceId;
     // try without authenticating
-    $.getJSON(DURASTREAM_URL+"/getStreamUrl",function(data){
+    $.post(DURASTREAM_URL+"/getStreamUrl", req, function(data){
       if('streamUrl' in data) {
+        message("URL provided via AJAX.")
         streamUrl = data.streamUrl;
         // Note that AJAX response will set the cookie in this case.
         // If cookies are turned off, AJAX called on each page view.
-        launchPlayer(DIV_SELECTOR, streamUrl, contentId);
+        launchPlayer(streamUrl, contentId);
       } else {
+        message("AJAX refused to provide URL, login is required.")
         // Put message on page, give user a link to streaming login.
-        $(DIV_SELECTOR).after("<p>"+data.message+"<br /><a href='"+DURASTREAM_URL+"/getStreamUrlSecure'>Click to Log In</a></p>");
+        $(".player").after(
+          "<p>"+data.message+"<br /><a href='"
+          +DURASTREAM_URL+"/getStreamUrlSecure?"
+          +"contentId="+encodeURIComponent(contentId)
+          +"&spaceId="+encodeURIComponent(spaceId)
+          +"&backURL="+encodeURIComponent(window.location.href)
+          +"'>Click to Log In</a></p>");
       }
-    });
+    }, "json");
   } else {
-    launchPlayer(DIV_SELECTOR, streamUrl, contentId);
+    message("Obtained URL from cookie.")
+    launchPlayer(streamUrl, contentId);
   }
+}
+
+function get_cookies_array() {
+  var cookies = { };
+  if (document.cookie && document.cookie != '') {
+    var split = document.cookie.split(';');
+    for (var i = 0; i < split.length; i++) {
+      var name_value = split[i].split("=");
+      name_value[0] = name_value[0].replace(/^ /, '');
+      cookies[decodeURIComponent(name_value[0])] = decodeURIComponent(name_value[1]);
+    }
+  }
+  return cookies;
+}
+
+function message(line) {
+  $("#steps").append(line+"<br />");
 }
 </script>
 </body>
+</html>

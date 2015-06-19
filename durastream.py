@@ -3,9 +3,8 @@ from flask import *
 import requests
 from requests.exceptions import RequestException
 from requests.auth import HTTPBasicAuth
-import re
-import json
-import os, errno
+import json, os
+import errno
 from werkzeug.contrib.cache import FileSystemCache
 from socket import inet_aton
 from struct import unpack
@@ -23,12 +22,11 @@ DURACLOUD_USERNAME = app.config['DURACLOUD_USERNAME']
 DURACLOUD_PASSWORD = app.config['DURACLOUD_PASSWORD']
 
 DURACLOUD_SPACE_CACHE_DIR = app.config['DURACLOUD_SPACE_CACHE_DIR']
-
 IP_RULES_CONFIG = app.config['IP_RULES_CONFIG']
 
-spaceCache = None
-
-ipRulesCache = []
+@app.route('/testPlayer', methods=['GET'])
+def test_player():
+    return render_template('test.html', ip=request.remote_addr)
 
 # AJAX requests for streaming URLS
 @app.route('/getStreamUrl', methods=['POST'])
@@ -36,6 +34,7 @@ def get_stream():
     spaceId = request.form["spaceId"]
     contentId = request.form["contentId"]
     info = getSpaceInfo(spaceId)
+    print info
     if info['Access Control'] == 'PUBLIC':
         url = getOpenURL(spaceId, contentId, None)
         rbody = json.dumps({'streamUrl': url})
@@ -48,31 +47,17 @@ def get_stream():
     return json.dumps({'secure': True, 'message': 'You must log in to view this stream.'})
 
 # A page, requiring authentication, that delivers the streaming URL as a cookie.
-@app.route('/getStreamUrlSecure', methods=['POST'])
+@app.route('/getStreamUrlSecure', methods=['POST','GET'])
 def get_authenticated_stream():
-    spaceId = request.form["spaceId"]
-    contentId = request.form["contentId"]
-    backURL = request.form["backURL"]
+    spaceId = request.values["spaceId"]
+    contentId = request.values["contentId"]
+    backURL = request.values["backURL"]
     ipAddress = request.remote_addr
     url = getSignedURL(spaceId, contentId, None, ipAddress)
 
     # Thank you page with redirect and link back to content page.
     respBody = render_template('authenticated.html', backURL = backURL, timeout = DURASTREAM_TIMEOUT_HRS)
     return responseWithCookie(respBody, "text/html", url, spaceId, contentId)
-
-# Set client-side cookie with requested streaming URL (and timeout)
-def responseWithCookie(respBody, contentType, url, spaceId, contentId):
-    resp = make_response(respBody)
-    resp.headers['Content-Type'] = contentType
-    # max_age is seconds, taking away 30 to make sure it is never stale
-    maxage = DURASTREAM_TIMEOUT_SECS - 30
-    resp.set_cookie("durastream|"+spaceId+"|"+contentId, value = str(url), max_age = maxage);
-    return resp
-
-
-if __name__ == '__main__':
-    app.run()
-
 
 def getOpenURL(spaceId, contentId, resourcePrefix):
     postBody = json.dumps({'spaceId': spaceId, 'contentId': contentId})
@@ -95,13 +80,16 @@ def getSignedURL(spaceId, contentId, resourcePrefix, ipAddress):
     headers = {'Content-Type':'application/json'}
     auth = HTTPBasicAuth(DURACLOUD_USERNAME, DURACLOUD_PASSWORD)
     try:
+        print postBody
         res = requests.post(url, data=postBody, headers=headers, auth=auth)
+        print res
         response = res.json()
         result = response['signedUrl']
         return result
     except RequestException as e:
         print e
 
+spaceCache = None
 
 def getSpaceInfo(spaceId):
     global spaceCache
@@ -123,6 +111,15 @@ def getSpaceInfo(spaceId):
             print e
             raise
     return result
+
+# Set client-side cookie with requested streaming URL (and timeout)
+def responseWithCookie(respBody, contentType, url, spaceId, contentId):
+    resp = make_response(respBody)
+    resp.headers['Content-Type'] = contentType
+    # max_age is seconds, taking away 30 to make sure it is never stale
+    maxage = DURASTREAM_TIMEOUT_SECS - 30
+    resp.set_cookie("durastream|"+spaceId+"|"+contentId, value = str(url), max_age = maxage);
+    return resp
 
 # TODO pattern matching on remote address
 def oncampus(remoteAddress):
@@ -169,13 +166,9 @@ def mkdir_p(path):
             pass
         else: raise
 
-# Create list of IP rules (code, high, low)
-def prepareIPRules():
-    # read every line in the rules config
-    # parse out the code, low and high parts of the range.
-    # record E/I, low and high integers
-    return
-
 # Make integer from IP address
 def atol(a):
     return unpack(">L", inet_aton(a))[0]
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0')
