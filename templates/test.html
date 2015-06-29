@@ -59,11 +59,20 @@ function launchPlayer(streamUrl, contentId) {
 }
 //style='undefined'
 function stream(spaceId) {
-  var contentId = 'Door_Bell.ogg';
+  message("Obtain my real IP from durastream service...");
+  $.get(DURASTREAM_URL+"/getIP", function(data) {
+      var myIP = data.IP;
+      message("IP is "+myIP);
+      stream2(spaceId, myIP);
+    });
+  }
+
+function stream2(spaceId, myIP) {
+  var contentId = 'hark.mp3';
 
   // try the cookie (set locally or after authenticating to service)
   message("Checking for an existing cookie with streaming URL...");
-  var streamUrl = Cookies.get("durastream|"+spaceId+"|"+contentId);
+  var streamUrl = Cookies.get("durastream|"+spaceId+"|"+contentId+"|"+myIP);
   if(streamUrl === undefined) {
     message("No Cookie yet, trying to obtain URL w/AJAX...")
     var req = {};

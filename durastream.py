@@ -28,6 +28,13 @@ IP_RULES_CONFIG = app.config['IP_RULES_CONFIG']
 def test_player():
     return render_template('test.html', ip=request.remote_addr)
 
+
+@app.route('/getIP', methods=['GET'])
+def get_ip():
+    resp = make_response(json.dumps({'IP': request.remote_addr}))
+    resp.headers['Content-Type'] = "application/json"
+    return resp
+
 # AJAX requests for streaming URLS
 @app.route('/getStreamUrl', methods=['POST'])
 def get_stream():
@@ -38,12 +45,12 @@ def get_stream():
     if info['Access Control'] == 'PUBLIC':
         url = getOpenURL(spaceId, contentId, None)
         rbody = json.dumps({'streamUrl': url})
-        return responseWithCookie(rbody, "application/json", url, spaceId, contentId)
+        return responseWithCookie(rbody, "application/json", url, spaceId, contentId, request.remote_addr)
     elif info['Access Control'] == 'CAMPUS_OR_SECURE':
         if oncampus(request.remote_addr):
             url = getSignedURL(spaceId, contentId, None, request.remote_addr)
             rbody = json.dumps({'streamUrl': url})
-            return responseWithCookie(rbody, "application/json", url, spaceId, contentId)
+            return responseWithCookie(rbody, "application/json", url, spaceId, contentId, request.remote_addr)
     return json.dumps({'secure': True, 'message': 'You must log in to view this stream.'})
 
 # A page, requiring authentication, that delivers the streaming URL as a cookie.
@@ -57,7 +64,7 @@ def get_authenticated_stream():
 
     # Thank you page with redirect and link back to content page.
     respBody = render_template('authenticated.html', backURL = backURL, timeout = DURASTREAM_TIMEOUT_HRS)
-    return responseWithCookie(respBody, "text/html", url, spaceId, contentId)
+    return responseWithCookie(respBody, "text/html", url, spaceId, contentId, request.remote_addr)
 
 def getOpenURL(spaceId, contentId, resourcePrefix):
     postBody = json.dumps({'spaceId': spaceId, 'contentId': contentId})
@@ -113,15 +120,15 @@ def getSpaceInfo(spaceId):
     return result
 
 # Set client-side cookie with requested streaming URL (and timeout)
-def responseWithCookie(respBody, contentType, url, spaceId, contentId):
+def responseWithCookie(respBody, contentType, url, spaceId, contentId, clientIP):
     resp = make_response(respBody)
     resp.headers['Content-Type'] = contentType
     # max_age is seconds, taking away 30 to make sure it is never stale
     maxage = DURASTREAM_TIMEOUT_SECS - 30
-    resp.set_cookie("durastream|"+spaceId+"|"+contentId, value = str(url), max_age = maxage);
+    resp.set_cookie("durastream|"+spaceId+"|"+contentId+"|"+clientIP, value = str(url), max_age = maxage);
     return resp
 
-# TODO pattern matching on remote address
+# pattern matching on remote address
 def oncampus(remoteAddress):
     # compute integer value of remote address
     # loop through rules
