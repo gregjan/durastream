@@ -8,12 +8,17 @@ import errno
 from werkzeug.contrib.cache import FileSystemCache
 from socket import inet_aton
 from struct import unpack
+import logging, logging.handlers
 
 app = Flask(__name__)
 app.config.from_object('default_config')
 if 'DURASTREAM_SETTINGS' in os.environ:
     app.config.from_envvar('DURASTREAM_SETTINGS')
+import sys
+sys.path.insert(0,'/htdocs/includes/webdata/durastream')
+app.config.from_object('durastream_config')
 
+LOG_FILENAME = '/tmp/durastream-errors.log'
 DURASTREAM_TIMEOUT_HRS = app.config['DURASTREAM_TIMEOUT_HRS']
 DURASTREAM_TIMEOUT_SECS = DURASTREAM_TIMEOUT_HRS * 60 * 60
 
@@ -24,13 +29,25 @@ DURACLOUD_PASSWORD = app.config['DURACLOUD_PASSWORD']
 DURACLOUD_SPACE_CACHE_DIR = app.config['DURACLOUD_SPACE_CACHE_DIR']
 IP_RULES_CONFIG = app.config['IP_RULES_CONFIG']
 
-@app.route('/testPlayer', methods=['GET'])
-def test_player():
-    return render_template('test.html', ip=request.remote_addr)
+app.logger.setLevel(logging.DEBUG) # use the native logger of flask
+handler = logging.handlers.RotatingFileHandler(
+    LOG_FILENAME,
+    maxBytes=1024 * 1024 * 100,
+    backupCount=20
+    )
+app.logger.addHandler(handler)
 
+@app.route('/testFlowPlayer', methods=['GET'])
+def test_flowplayer():
+    return render_template('test-flowplayer.html', ip=request.remote_addr)
+
+@app.route('/testMediaElement', methods=['GET'])
+def test_player():
+    return render_template('test-mediaelement.html', ip=request.remote_addr)
 
 @app.route('/getIP', methods=['GET'])
 def get_ip():
+    app.logger.debug("get IP")
     resp = make_response(json.dumps({'IP': request.remote_addr}))
     resp.headers['Content-Type'] = "application/json"
     return resp
@@ -38,10 +55,11 @@ def get_ip():
 # AJAX requests for streaming URLS
 @app.route('/getStreamUrl', methods=['POST'])
 def get_stream():
+    app.logger.debug("I am over here")
     spaceId = request.form["spaceId"]
     contentId = request.form["contentId"]
     info = getSpaceInfo(spaceId)
-    print info
+    app.logger.debug(info)
     if info['Access Control'] == 'PUBLIC':
         url = getOpenURL(spaceId, contentId, None)
         rbody = json.dumps({'streamUrl': url})
@@ -83,13 +101,13 @@ def getSignedURL(spaceId, contentId, resourcePrefix, ipAddress):
     postBody = json.dumps(
         {'spaceId': spaceId, 'contentId': contentId, 'ipAddress': ipAddress,
          'minutesToExpire': DURASTREAM_TIMEOUT_HRS * 60})
+    app.logger.debug("getSignedURL request:\n"+postBody)
     url = DURACLOUD_URL+ "durastore/task/get-signed-url"
     headers = {'Content-Type':'application/json'}
     auth = HTTPBasicAuth(DURACLOUD_USERNAME, DURACLOUD_PASSWORD)
     try:
-        print postBody
         res = requests.post(url, data=postBody, headers=headers, auth=auth)
-        print res
+        app.logger.debug("getSignedURL response:\n"+json.dumps(res.json()))
         response = res.json()
         result = response['signedUrl']
         return result
@@ -178,4 +196,15 @@ def atol(a):
     return unpack(">L", inet_aton(a))[0]
 
 if __name__ == '__main__':
+    app.logger.setLevel(logging.INFO) # use the native logger of flask
+
+    handler = logging.handlers.RotatingFileHandler(
+        LOG_FILENAME,
+        maxBytes=1024 * 1024 * 100,
+        backupCount=20
+        )
+
+    app.logger.addHandler(handler)
+    logging.basicConfig(filename='/tmp/durastream-errors.log',level=logging.DEBUG)
+
     app.run(host='0.0.0.0')

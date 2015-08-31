@@ -20,6 +20,11 @@ durastream_config.py file and add the appropriate directory to the path in duras
 Then add this line, after the default_config line:
 
     app.config.from_object('durastream_config')
+    
+Note that adding a using "from_object" method above may require adding the folder to the python path, as follows:
+
+    import sys
+    sys.path.insert(0,'/etc/durastream')
 
 ## Access Controls for Spaces
 All of the streams can be either public or secured on the space level. Secure spaces

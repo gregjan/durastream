@@ -1,9 +1,11 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-
-<html xmlns="http://www.w3.org/1999/xhtml">
+<!DOCTYPE html>
+<html>
 <head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta charset="UTF-8" />
   <title>Durastream Web Player Test Page</title>
+  <code>
+  <script type="text/javascript" src="https://code.jquery.com/jquery-1.7.2.min.js"></script>
+  <script src="https://releases.flowplayer.org/js/flowplayer-3.2.13.min.js"></script>
 </head>
 <body>
   <h1>Durastream Web Player Test Page</h1>
@@ -14,17 +16,14 @@
   DuraCloud spaces with streaming enabled. In addition there is a info.json file
   with authorization requirements in each space. Steps taken and current cookie status
   is shown below.</p>
-  <button onclick="stream('open-streaming')">public DuraCloud space</button><br />
-
-  <button onclick="stream('secure-streaming-campus')">secure space requiring campus IP <emphasis>OR</emphasis> authentication</button><br />
-
-  <button onclick="stream('secure-streaming')">secure space requiring campus authentication</button><br />
+  <button onclick="stream('sfc20009-open','test')">sfc20009-open/test</button><br />
+  Broken due to mp3 extension: <button onclick="stream('sfc20009-closed','20009_FS12780_0001.mp3')">sfc20009-closed/20009_FS12780_0001.mp3</button><br />
+  Works! No Extension on contentId: <button onclick="stream('sfc20009-closed','test')">sfc20009-closed/test</button><br />
+  <button onclick="stream('sfc20009-campus','test')">sfc20009-campus/test</button><br />
 
   <div class="example">
     <h3>Streaming Player</h3>
-    <div class="player" style="background-color: silver">
-      Player will load here once we obtain the streaming URL.
-    </div>
+    <div id="player" style="display:block;width:508px;height:200px;"></div>
     <h3>Steps</h3>
     <div id="steps">
     </div>
@@ -34,11 +33,13 @@
     <div id="ip">{{ ip }}</div>
   </div>
 
-<script type="text/javascript" src="http://code.jquery.com/jquery-1.7.2.min.js"></script>
 <script type="text/javascript" src="static/js.cookie.js"></script>
 <script type="text/javascript">
-var DURASTREAM_URL='http://x1:5000'; // base URL for durastream service
-$(document).ready(refreshCookies());
+var DURASTREAM_URL='https://services.lib.unc.edu/durastream'; // base URL for durastream service
+$(document).ready(function() {
+	 refreshCookies();
+ }
+);
 
 function refreshCookies() {
   var cookies = get_cookies_array();
@@ -50,26 +51,57 @@ function refreshCookies() {
   setTimeout(refreshCookies, 1000);
 }
 
-function launchPlayer(streamUrl, contentId) {
-  message("Launching player for URL: "+streamUrl);
-  var flashvars="skin=static/stylish.swf&file="+contentId+"&start=00:00&streamer="+streamUrl;
-  $(".player").html("<embed width='470' height='30' flashvars="+flashvars
-    +" bgcolor='#ffffff' name='ply' id='ply' src='static/player.swf'"
-    +" type='application/x-shockwave-flash'/>");
+function launchPlayer(streamUrl, spaceId, contentId) {
+  message("streaming URL from DuraCloud: "+streamUrl);
+
+  // warn if streamUrl contains Policy and contentId has extension
+  if((streamUrl.indexOf("Policy=") > -1) && (contentId.indexOf('.mp3') > -1)) {
+      message("WARNING: Cannot play secure MP3 streams that have a file extension");
+      return;
+    }
+
+  var idx1 = streamUrl.indexOf('/st/');
+  var idx2 = streamUrl.indexOf('?');
+  // most player require mp3: prefix before the stream name
+  //playerUrl = streamUrl.replace('/(.*)\/st(.*)(\?.*)/', '$1mp3: HAHA  $2$3');
+  message("got idx: "+idx1+" "+idx2);
+  serverUrl = streamUrl.substring(0, idx1)+"/st";
+  if(idx2 > -1) {
+    contentUrl = "mp3:"+streamUrl.substring(idx1+4, idx2);
+    contentUrl = contentUrl+streamUrl.substring(idx2, streamUrl.length);
+  } else {
+    contentUrl = "mp3:"+streamUrl.substring(idx1+4, streamUrl.length);
+  }
+  message("Launching player with server URL: "+serverUrl+" contentUrl: "+contentUrl);
+
+  var player = $f("player", "static/flowplayer/flowplayer-3.2.18.swf", {
+      plugins: {
+          rtmp: {
+              url: "static/flowplayer/flowplayer.rtmp-3.2.13.swf",
+              // the token probably goes in this URL
+              netConnectionUrl: serverUrl,
+              // make the rtmp plugin query the stream length from the server
+              durationFunc: 'getStreamLength'
+          }
+      },
+      clip: {
+        provider: "rtmp",
+        url: contentUrl,
+        scaling: "fit"
+      }
+  });
 }
-//style='undefined'
-function stream(spaceId) {
+
+function stream(spaceId, contentId) {
   message("Obtain my real IP from durastream service...");
   $.get(DURASTREAM_URL+"/getIP", function(data) {
       var myIP = data.IP;
       message("IP is "+myIP);
-      stream2(spaceId, myIP);
+      stream2(spaceId, myIP, contentId);
     });
   }
 
-function stream2(spaceId, myIP) {
-  var contentId = 'hark.mp3';
-
+function stream2(spaceId, myIP, contentId) {
   // try the cookie (set locally or after authenticating to service)
   message("Checking for an existing cookie with streaming URL...");
   var streamUrl = Cookies.get("durastream|"+spaceId+"|"+contentId+"|"+myIP);
@@ -85,11 +117,11 @@ function stream2(spaceId, myIP) {
         streamUrl = data.streamUrl;
         // Note that AJAX response will set the cookie in this case.
         // If cookies are turned off, AJAX called on each page view.
-        launchPlayer(streamUrl, contentId);
+        launchPlayer(streamUrl, spaceId, contentId);
       } else {
         message("AJAX refused to provide URL, login is required.")
         // Put message on page, give user a link to streaming login.
-        $(".player").after(
+        $("#player").after(
           "<p>"+data.message+"<br /><a href='"
           +DURASTREAM_URL+"/getStreamUrlSecure?"
           +"contentId="+encodeURIComponent(contentId)
@@ -100,7 +132,7 @@ function stream2(spaceId, myIP) {
     }, "json");
   } else {
     message("Obtained URL from cookie.")
-    launchPlayer(streamUrl, contentId);
+    launchPlayer(streamUrl, spaceId, contentId);
   }
 }
 
